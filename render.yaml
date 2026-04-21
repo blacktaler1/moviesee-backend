@@ -1,5 +1,5 @@
 # Render.com deploy konfiguratsiyasi
-# render.com saytiga kiring → "New +" → "Blueprint" → bu faylni ulang
+# render.com → "New +" → "Blueprint" → GitHub repo ulang
 
 services:
 
@@ -7,9 +7,8 @@ services:
   - type: web
     name: moviesee-backend
     runtime: python
-    region: frankfurt          # Yevropaga yaqin = past latency
-    plan: free                 # Tekin tarif
-    rootDir: backend
+    region: frankfurt
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
@@ -18,31 +17,21 @@ services:
         fromDatabase:
           name: moviesee-db
           property: connectionString
-      - key: REDIS_URL
-        fromService:
-          name: moviesee-redis
-          type: redis
-          property: connectionString
       - key: SECRET_KEY
-        generateValue: true    # Render avtomatik yaratadi
+        generateValue: true
       - key: ALGORITHM
         value: HS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "30"
       - key: ALLOWED_ORIGINS
-        value: "*"             # Productda o'z domeningizni qo'ying
+        value: "*"
+      # Firebase uchun Render dashboard → Environment → qo'shing:
+      # FIREBASE_CREDENTIALS_JSON = firebase-adminsdk JSON faylining to'liq mazmuni
 
-  # ─── PostgreSQL (tekin 1GB) ────────────────────────────────
+  # ─── PostgreSQL ────────────────────────────────────────────
   - type: pserv
     name: moviesee-db
     plan: free
     region: frankfurt
     databaseName: moviesee
     databaseUser: moviesee
-
-  # ─── Redis (tekin 25MB) ───────────────────────────────────
-  - type: redis
-    name: moviesee-redis
-    plan: free
-    region: frankfurt
-    maxmemoryPolicy: allkeys-lru

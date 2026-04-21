@@ -3,9 +3,9 @@ uvicorn[standard]==0.32.1
 websockets==13.1
 sqlalchemy[asyncio]==2.0.36
 aiosqlite==0.20.0
-# asyncpg==0.30.0  # Production (PostgreSQL) uchun — mahalliy testda shart emas
+asyncpg==0.30.0
 alembic==1.14.0
-# redis[asyncio]==5.2.0  # Production uchun — mahalliy testda shart emas
+redis[asyncio]==5.2.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.2.1
