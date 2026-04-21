@@ -8,11 +8,12 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import get_db, init_db
+from app.database import get_db, init_db, engine
 from app.api import auth, rooms
 from app.websocket.events import handle_websocket
 from app.services.auth import decode_token, get_user_by_id
 from app.core.exceptions import AppException
+from app.admin import setup_admin
 
 # ── Logging sozlash ──────────────────────────────────────────────
 logging.basicConfig(
@@ -128,6 +129,9 @@ async def log_requests(request: Request, call_next):
 
 app.include_router(auth.router)
 app.include_router(rooms.router)
+
+# Admin panelni ulash
+setup_admin(app, engine)
 
 
 @app.on_event("startup")

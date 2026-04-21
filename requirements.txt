@@ -17,6 +17,8 @@ python-dotenv==1.0.1
 firebase-admin==6.6.0
 yt-dlp>=2026.3.17
 curl-cffi>=0.6.0          # Chrome impersonation (anti-bot saytlar uchun)
+sqladmin==0.20.1
+itsdangerous==2.2.0
 
 
 # Testing

@@ -25,6 +25,10 @@ services:
         value: "30"
       - key: ALLOWED_ORIGINS
         value: "*"
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        generateValue: true
       # Firebase uchun Render dashboard → Environment → qo'shing:
       # FIREBASE_CREDENTIALS_JSON = firebase-adminsdk JSON faylining to'liq mazmuni
 
