@@ -1,4 +1,5 @@
 import logging
+print(">>> DEBUG: MovieSee Backend main.py yuklanmoqda...")
 import time as time_module
 import uuid
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Depends, Request
@@ -136,11 +137,19 @@ setup_admin(app, engine)
 
 @app.on_event("startup")
 async def startup():
+    print(">>> DEBUG: startup() funksiyasi boshlandi")
     logger.info("=== MovieSee Backend ishga tushmoqda ===")
     logger.info(f"DATABASE_URL: {settings.DATABASE_URL}")
     logger.info(f"ALLOWED_ORIGINS: {settings.ALLOWED_ORIGINS}")
-    await init_db()
-    logger.info("=== Ma'lumotlar bazasi tayyor ===")
+    try:
+        await init_db()
+        logger.info("=== Ma'lumotlar bazasi tayyor ===")
+    except Exception as e:
+        logger.error(f"!!! DATABASE ERROR: {e}", exc_info=True)
+        print(f">>> DEBUG: Bazaga ulanishda xato: {e}")
+        # Serverni to'xtatmaslik uchun xatoni chiqaramiz, lekin davom etamiz
+        # (yoki xatoni qayta otamiz)
+        raise e
 
 
 @app.get("/health")
