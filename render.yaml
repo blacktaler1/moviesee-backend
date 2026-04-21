@@ -32,10 +32,10 @@ services:
       # Firebase uchun Render dashboard → Environment → qo'shing:
       # FIREBASE_CREDENTIALS_JSON = firebase-adminsdk JSON faylining to'liq mazmuni
 
-  # ─── PostgreSQL ────────────────────────────────────────────
-  - type: pserv
-    name: moviesee-db
+# ─── PostgreSQL ────────────────────────────────────────────
+databases:
+  - name: moviesee-db
+    databaseName: moviesee
+    user: moviesee
     plan: free
     region: frankfurt
-    databaseName: moviesee
-    databaseUser: moviesee
