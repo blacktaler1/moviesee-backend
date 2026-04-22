@@ -147,6 +147,8 @@ def _is_direct_media(url: str) -> bool:
 
 def _get_ydl_opts() -> dict:
     """yt-dlp parametrlarini qaytaradi."""
+    import os
+
     opts: dict = {
         "quiet": True,
         "no_warnings": False,
@@ -154,44 +156,51 @@ def _get_ydl_opts() -> dict:
         "extract_flat": False,
         "skip_download": True,
         "no_check_certificate": True,
-        # Direct MP4 formatni afzal ko'ramiz (HLS emas) — proxy uchun soddaroq
         "format": (
             "best[ext=mp4][protocol=https][height<=720]"
             "/best[ext=mp4][height<=720]"
             "/best[ext=mp4]"
-            "/18"          # YouTube 360p direct MP4 (fallback)
+            "/18"
             "/best"
         ),
     }
 
-    # Chrome impersonation — anti-bot saytlar uchun
-    if _YDL_IMPERSONATE is not None:
-        opts["impersonate"] = _YDL_IMPERSONATE
-        logger.info("[VideoExtractor] Chrome impersonation yoqildi")
+    # Render server muhiti: na Firefox, na Chrome binary mavjud
+    # cookiesfrombrowser va impersonate faqat lokal ishlab chiqishda ishlaydi
+    is_render = os.environ.get("RENDER") or os.environ.get("IS_PULL_REQUEST") or \
+                os.path.exists("/opt/render")
 
-    # Node.js runtime uchun yo'l (yt-dlp n-challenge hal qilish uchun kerak)
+    if not is_render:
+        # Lokal: Chrome impersonation va Firefox cookie'larni sinab ko'ramiz
+        if _YDL_IMPERSONATE is not None:
+            opts["impersonate"] = _YDL_IMPERSONATE
+            logger.info("[VideoExtractor] Chrome impersonation yoqildi (lokal)")
+
+        # Firefox cookie'lari — faqat brauzer o'rnatilgan muhitda
+        firefox_profile_exists = any(
+            os.path.isdir(p) for p in [
+                os.path.expanduser("~/.mozilla/firefox"),
+                os.path.expanduser("~/.config/mozilla/firefox"),
+                os.path.expandvars("%APPDATA%/Mozilla/Firefox"),
+            ]
+        )
+        if firefox_profile_exists:
+            opts["cookiesfrombrowser"] = ("firefox",)
+            logger.info("[VideoExtractor] Firefox cookie'lari ishlatiladi")
+    else:
+        logger.info("[VideoExtractor] Render muhiti: cookie va impersonate o'chirildi")
+
+    # Node.js runtime (yt-dlp n-challenge uchun)
     node_path = shutil.which("node") or shutil.which("node.exe")
     if not node_path:
-        import os
         candidate = r"C:\Program Files\nodejs\node.exe"
         if os.path.exists(candidate):
             node_path = candidate
 
     if node_path:
         opts["js_runtimes"] = {"node": {"path": node_path}}
-        opts["remote_components"] = {"ejs:github"}  # n-challenge solver
+        opts["remote_components"] = {"ejs:github"}
         logger.info(f"[VideoExtractor] Node.js topildi: {node_path}")
-    else:
-        logger.warning("[VideoExtractor] Node.js topilmadi — ba'zi YouTube formatlari mavjud bo'lmasligi mumkin")
-
-    # Firefox cookie'lari (YouTube bot detection'dan o'tish uchun)
-    try:
-        import browser_cookie3  # noqa — mavjudligini tekshiramiz
-        opts["cookiesfrombrowser"] = ("firefox",)
-        logger.info("[VideoExtractor] Firefox cookie'lari ishlatiladi")
-    except ImportError:
-        opts["cookiesfrombrowser"] = ("firefox",)
-        logger.info("[VideoExtractor] Firefox cookie'lari sinab ko'riladi")
 
     return opts
 
@@ -207,27 +216,40 @@ def _extract_sync(page_url: str) -> VideoInfo:
 
     ydl_opts = _get_ydl_opts()
 
+    def _strip_opts(opts: dict, *keys: str) -> dict:
+        return {k: v for k, v in opts.items() if k not in keys}
+
     def _run_extract(opts: dict) -> dict:
+        """Ketma-ket fallback: impersonate + cookie → no-cookie → no-impersonate → bare"""
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 return ydl.extract_info(page_url, download=False)
         except Exception as e:
             err_str = str(e)
-            # 1) Impersonation mavjud emas — o'chirib qayta urinish
+
+            # Impersonation mavjud emas — o'chirib qayta urinish
             if "impersonate" in err_str.lower() and "not available" in err_str.lower():
-                logger.warning(f"[VideoExtractor] Impersonation ishlamadi, o'chirildi: {e}")
-                _YDL_IMPERSONATE = None
-                _IMPERSONATE_CHECKED = True
-                _IMPERSONATE_AVAILABLE = False
-                opts_no_imp = {k: v for k, v in opts.items() if k != "impersonate"}
-                with yt_dlp.YoutubeDL(opts_no_imp) as ydl2:
+                logger.warning("[VideoExtractor] Impersonation ishlamadi, o'chirildi")
+                clean = _strip_opts(opts, "impersonate", "cookiesfrombrowser")
+                with yt_dlp.YoutubeDL(clean) as ydl2:
                     return ydl2.extract_info(page_url, download=False)
-            # 2) Firefox cookie'larsiz qayta urinib ko'ramiz
+
+            # Firefox/cookie xatosi — cookie'larsiz, impersonate ham olib tashlaymiz
             if "firefox" in err_str.lower() or "cookie" in err_str.lower() or "dpapi" in err_str.lower():
-                logger.warning(f"[VideoExtractor] Firefox cookie xatosi, cookie'larsiz urinib ko'rilmoqda: {e}")
-                opts_no_cookies = {k: v for k, v in opts.items() if k != "cookiesfrombrowser"}
-                with yt_dlp.YoutubeDL(opts_no_cookies) as ydl3:
-                    return ydl3.extract_info(page_url, download=False)
+                logger.warning("[VideoExtractor] Cookie xatosi, cookie+impersonate o'chirib urinilmoqda")
+                clean = _strip_opts(opts, "cookiesfrombrowser", "impersonate")
+                try:
+                    with yt_dlp.YoutubeDL(clean) as ydl3:
+                        return ydl3.extract_info(page_url, download=False)
+                except Exception as e2:
+                    err2 = str(e2)
+                    # Ikkinchi urinishda ham impersonate xatosi — to'liq minimal opts
+                    if "impersonate" in err2.lower():
+                        bare = _strip_opts(clean, "impersonate")
+                        with yt_dlp.YoutubeDL(bare) as ydl4:
+                            return ydl4.extract_info(page_url, download=False)
+                    raise
+
             raise
 
     info = _run_extract(ydl_opts)
@@ -552,15 +574,13 @@ def _extract_options_ydl_sync(page_url: str) -> list[VideoOption]:
                 return ydl.extract_info(page_url, download=False)
         except Exception as e:
             err = str(e)
-            if "impersonate" in err.lower() and "not available" in err.lower():
-                logger.warning(f"[VideoExtractor/ydl-flat] Impersonation yo'q, o'chirib urinilmoqda")
-                no_imp = {k: v for k, v in o.items() if k != "impersonate"}
-                with yt_dlp.YoutubeDL(no_imp) as ydl2:
+            # Har qanday impersonate yoki cookie xatosida — ikkalasini olib tashlab urinish
+            if ("impersonate" in err.lower() and "not available" in err.lower()) or \
+               any(k in err.lower() for k in ("firefox", "cookie", "dpapi")):
+                logger.warning(f"[VideoExtractor/ydl-flat] impersonate/cookie xatosi, toza opts bilan: {err[:80]}")
+                bare = {k: v for k, v in o.items() if k not in ("impersonate", "cookiesfrombrowser")}
+                with yt_dlp.YoutubeDL(bare) as ydl2:
                     return ydl2.extract_info(page_url, download=False)
-            if any(k in err.lower() for k in ("firefox", "cookie", "dpapi")):
-                no_cookies = {k: v for k, v in o.items() if k != "cookiesfrombrowser"}
-                with yt_dlp.YoutubeDL(no_cookies) as ydl3:
-                    return ydl3.extract_info(page_url, download=False)
             raise
 
     try:
